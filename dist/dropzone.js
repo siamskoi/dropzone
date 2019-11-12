@@ -660,6 +660,124 @@ var Dropzone = function (_Emitter) {
           return info;
         },
 
+        customUpload: function customUpload(files, dataBlocks) {
+          console.log('Custom upload data');
+
+          var _this15 = this;
+
+          var xhr = new XMLHttpRequest();
+
+          // Put the xhr object in the file objects to be able to reference it later.
+          for (var _iterator22 = files, _isArray22 = true, _i24 = 0, _iterator22 = _isArray22 ? _iterator22 : _iterator22[Symbol.iterator]();;) {
+            var _ref21;
+
+            if (_isArray22) {
+              if (_i24 >= _iterator22.length) break;
+              _ref21 = _iterator22[_i24++];
+            } else {
+              _i24 = _iterator22.next();
+              if (_i24.done) break;
+              _ref21 = _i24.value;
+            }
+
+            var file = _ref21;
+
+            file.xhr = xhr;
+          }
+          if (files[0].upload.chunked) {
+            // Put the xhr object in the right chunk object, so it can be associated later, and found with _getChunk
+            files[0].upload.chunks[dataBlocks[0].chunkIndex].xhr = xhr;
+          }
+
+          var method = this.resolveOption(this.options.method, files);
+          var url = this.resolveOption(this.options.url, files);
+          xhr.open(method, url, true);
+
+          // Setting the timeout after open because of IE11 issue: https://gitlab.com/meno/dropzone/issues/8
+          xhr.timeout = this.resolveOption(this.options.timeout, files);
+
+          // Has to be after `.open()`. See https://github.com/enyo/dropzone/issues/179
+          xhr.withCredentials = !!this.options.withCredentials;
+
+          xhr.onload = function (e) {
+            _this15._finishedUploading(files, xhr, e);
+          };
+
+          xhr.onerror = function () {
+            _this15._handleUploadError(files, xhr);
+          };
+
+          // Some browsers do not have the .upload property
+          var progressObj = xhr.upload != null ? xhr.upload : xhr;
+          progressObj.onprogress = function (e) {
+            return _this15._updateFilesUploadProgress(files, xhr, e);
+          };
+
+          var headers = {
+            "Accept": "application/json",
+            "Cache-Control": "no-cache",
+            "X-Requested-With": "XMLHttpRequest"
+          };
+
+          if (this.options.headers) {
+            Dropzone.extend(headers, this.options.headers);
+          }
+
+          for (var headerName in headers) {
+            var headerValue = headers[headerName];
+            if (headerValue) {
+              xhr.setRequestHeader(headerName, headerValue);
+            }
+          }
+
+          var formData = new FormData();
+
+          // Adding all @options parameters
+          if (this.options.params) {
+            var additionalParams = this.options.params;
+            if (typeof additionalParams === 'function') {
+              additionalParams = additionalParams.call(this, files, xhr, files[0].upload.chunked ? this._getChunk(files[0], xhr) : null);
+            }
+
+            for (var key in additionalParams) {
+              var value = additionalParams[key];
+              formData.append(key, value);
+            }
+          }
+
+          // Let the user add additional data if necessary
+          for (var _iterator23 = files, _isArray23 = true, _i25 = 0, _iterator23 = _isArray23 ? _iterator23 : _iterator23[Symbol.iterator]();;) {
+            var _ref22;
+
+            if (_isArray23) {
+              if (_i25 >= _iterator23.length) break;
+              _ref22 = _iterator23[_i25++];
+            } else {
+              _i25 = _iterator23.next();
+              if (_i25.done) break;
+              _ref22 = _i25.value;
+            }
+
+            var _file = _ref22;
+
+            this.emit("sending", _file, xhr, formData);
+          }
+          if (this.options.uploadMultiple) {
+            this.emit("sendingmultiple", files, xhr, formData);
+          }
+
+          this._addFormElementData(formData);
+
+          // Finally add the files
+          // Has to be last because some servers (eg: S3) expect the file to be the last parameter
+          for (var i = 0; i < dataBlocks.length; i++) {
+            var dataBlock = dataBlocks[i];
+            formData.append(dataBlock.name, dataBlock.data, dataBlock.filename);
+          }
+
+          this.submitRequest(xhr, formData, files);
+        },
+
 
         /**
          * Can be used to transform the file (for example, resize an image if necessary).
@@ -2390,119 +2508,8 @@ var Dropzone = function (_Emitter) {
   }, {
     key: "_uploadData",
     value: function _uploadData(files, dataBlocks) {
-      var _this15 = this;
-
-      var xhr = new XMLHttpRequest();
-
-      // Put the xhr object in the file objects to be able to reference it later.
-      for (var _iterator22 = files, _isArray22 = true, _i24 = 0, _iterator22 = _isArray22 ? _iterator22 : _iterator22[Symbol.iterator]();;) {
-        var _ref21;
-
-        if (_isArray22) {
-          if (_i24 >= _iterator22.length) break;
-          _ref21 = _iterator22[_i24++];
-        } else {
-          _i24 = _iterator22.next();
-          if (_i24.done) break;
-          _ref21 = _i24.value;
-        }
-
-        var file = _ref21;
-
-        file.xhr = xhr;
-      }
-      if (files[0].upload.chunked) {
-        // Put the xhr object in the right chunk object, so it can be associated later, and found with _getChunk
-        files[0].upload.chunks[dataBlocks[0].chunkIndex].xhr = xhr;
-      }
-
-      var method = this.resolveOption(this.options.method, files);
-      var url = this.resolveOption(this.options.url, files);
-      xhr.open(method, url, true);
-
-      // Setting the timeout after open because of IE11 issue: https://gitlab.com/meno/dropzone/issues/8
-      xhr.timeout = this.resolveOption(this.options.timeout, files);
-
-      // Has to be after `.open()`. See https://github.com/enyo/dropzone/issues/179
-      xhr.withCredentials = !!this.options.withCredentials;
-
-      xhr.onload = function (e) {
-        _this15._finishedUploading(files, xhr, e);
-      };
-
-      xhr.onerror = function () {
-        _this15._handleUploadError(files, xhr);
-      };
-
-      // Some browsers do not have the .upload property
-      var progressObj = xhr.upload != null ? xhr.upload : xhr;
-      progressObj.onprogress = function (e) {
-        return _this15._updateFilesUploadProgress(files, xhr, e);
-      };
-
-      var headers = {
-        "Accept": "application/json",
-        "Cache-Control": "no-cache",
-        "X-Requested-With": "XMLHttpRequest"
-      };
-
-      if (this.options.headers) {
-        Dropzone.extend(headers, this.options.headers);
-      }
-
-      for (var headerName in headers) {
-        var headerValue = headers[headerName];
-        if (headerValue) {
-          xhr.setRequestHeader(headerName, headerValue);
-        }
-      }
-
-      var formData = new FormData();
-
-      // Adding all @options parameters
-      if (this.options.params) {
-        var additionalParams = this.options.params;
-        if (typeof additionalParams === 'function') {
-          additionalParams = additionalParams.call(this, files, xhr, files[0].upload.chunked ? this._getChunk(files[0], xhr) : null);
-        }
-
-        for (var key in additionalParams) {
-          var value = additionalParams[key];
-          formData.append(key, value);
-        }
-      }
-
-      // Let the user add additional data if necessary
-      for (var _iterator23 = files, _isArray23 = true, _i25 = 0, _iterator23 = _isArray23 ? _iterator23 : _iterator23[Symbol.iterator]();;) {
-        var _ref22;
-
-        if (_isArray23) {
-          if (_i25 >= _iterator23.length) break;
-          _ref22 = _iterator23[_i25++];
-        } else {
-          _i25 = _iterator23.next();
-          if (_i25.done) break;
-          _ref22 = _i25.value;
-        }
-
-        var _file = _ref22;
-
-        this.emit("sending", _file, xhr, formData);
-      }
-      if (this.options.uploadMultiple) {
-        this.emit("sendingmultiple", files, xhr, formData);
-      }
-
-      this._addFormElementData(formData);
-
-      // Finally add the files
-      // Has to be last because some servers (eg: S3) expect the file to be the last parameter
-      for (var i = 0; i < dataBlocks.length; i++) {
-        var dataBlock = dataBlocks[i];
-        formData.append(dataBlock.name, dataBlock.data, dataBlock.filename);
-      }
-
-      this.submitRequest(xhr, formData, files);
+      console.log('Upload data');
+      this.options.customUpload.call(this, files, dataBlocks);
     }
 
     // Transforms all files with this.options.transformFile and invokes done with the transformed files when done.
